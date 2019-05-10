@@ -34,19 +34,32 @@ func NewSocket(handler func(*Socket), upgraderConfig ...*Upgrader) func(*gin.Con
 		// Create Conection
 		socket.WS, err = upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
 		if err != nil {
-			println("Error-36: " + socket.ID)
+			println("Error-37: " + socket.ID)
 			return
 		}
+		socket.prepare = make(chan bool)
 		socket.Conection()
 		upgrader.us[socket.ID] = socket
-		// OnClose
+		// OnClosed conection
+		socket.WS.SetCloseHandler(func(a int, b string) error {
+			socket.Connect = false
+			socket.FinishForServer <- true
+			return nil
+		})
+		// onClosed Handler
 		defer func() {
 			close(socket.closedCicle)
+			close(socket.FinishForServer)
+			close(socket.prepare)
 			delete(upgrader.us, socket.ID)
-			socket.WCFG("clear-conection", nil)
-			defer socket.WS.Close()
+			if socket.Connect {
+				socket.WCFG("clear-conection", nil)
+			}
+			socket.WS.Close()
 		}()
+
 		// Run UserHandler
+		<-socket.prepare
 		handler(socket)
 		// Finish
 		socket.closedCicle <- true

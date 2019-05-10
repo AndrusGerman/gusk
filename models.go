@@ -20,6 +20,8 @@ type Socket struct {
 	Connect         bool
 	closedCicle     chan bool
 	FinishForServer chan bool
+	prepare         chan bool
+	Reconection     bool
 	Event           map[string]func([]byte)
 }
 

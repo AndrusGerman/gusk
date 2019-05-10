@@ -14,11 +14,7 @@ import (
 // WJSON write json and send
 func (ctx *Socket) WJSON(event string, d interface{}) error {
 	if ctx.Connect {
-		err := ctx.WS.WriteJSON(MessageSend{Event: event, Data: d})
-		if err != nil {
-			ctx.Connect = false
-		}
-		return err
+		return ctx.WS.WriteJSON(MessageSend{Event: event, Data: d})
 	}
 	return errors.New("No connect")
 }
