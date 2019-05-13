@@ -1,28 +1,32 @@
 package gusk
 
-// // WJSON write json and send all users
-// func (ctx *Upgrader) Write(d interface{}) {
-// 	for _, val := range ctx.us {
-// 		ctx.deleteUserInOneSecond(val.WJSON(d), val)
-// 	}
-// }
+import "github.com/gin-gonic/gin"
 
-// // WByte write byte and send all users
-// func (ctx *Upgrader) WByte(d []byte) {
-// 	for _, val := range ctx.us {
-// 		ctx.deleteUserInOneSecond(val.WByte(d), val)
-// 	}
-// }
+// WLOG write log to all users
+func (ctx *Upgrader) WLOG(data interface{}, notSendUsers ...*Socket) {
+	ctx.WJSON("cfg", gin.H{"Mode": "server-log", "Data": data}, notSendUsers...)
+}
 
-// // WString write string and send all users
-// func (ctx *Upgrader) WString(d string) {
-// 	var dat = []byte(d)
-// 	ctx.WByte(dat)
-// }
+// WJSON write json to all users
+func (ctx *Upgrader) WJSON(event string, data interface{}, notSendUsers ...*Socket) {
+	// Send to user?
+	send := func(user *Socket) bool {
+		for _, val := range notSendUsers {
+			if val == user {
+				return false
+			}
+		}
+		return true
+	}
+	// Send WJSON
+	for _, val := range ctx.users {
+		if send(val) {
+			val.WJSON(event, data)
+		}
+	}
+}
 
-// func (ctx *Upgrader) deleteUserInOneSecond(err error, sk *Socket) error {
-// 	go func() {
-
-// 	}()
-// 	return err
-// }
+// WCFG write message to all users
+func (ctx *Upgrader) WCFG(mode string, data interface{}, notSendUsers ...*Socket) {
+	ctx.WJSON("cfg", gin.H{"Mode": mode, "Data": data}, notSendUsers...)
+}

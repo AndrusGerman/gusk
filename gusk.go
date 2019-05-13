@@ -2,70 +2,74 @@ package gusk
 
 import (
 	"fmt"
-	"time"
-
-	"github.com/gin-gonic/gin"
+	"net/http"
 )
 
 // NewSocket create new handler socket
-func NewSocket(handler func(*Socket), upgraderConfig ...*Upgrader) func(*gin.Context) {
+func NewSocket(handler func(*Socket), upgraderConfig ...*Upgrader) func(http.ResponseWriter, *http.Request) {
 	// Default Upgrader
 	var upgrader *Upgrader
+	// Check upgrader
 	if len(upgraderConfig) > 0 {
 		upgrader = upgraderConfig[0]
 	} else {
 		upgrader = new(Upgrader)
 	}
-	if upgrader.us == nil {
-		upgrader.us = make(map[string]*Socket)
+	// Check users in upgrader
+	if upgrader.users == nil {
+		upgrader.users = make(map[string]*Socket)
 	}
 	// Handler
-	return func(ctx *gin.Context) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		var err error
-		// Create USER Model
+		// Create Model
 		socket := &Socket{
-			Gin:             ctx,
-			Upgrader:        upgrader,
-			Connect:         true,
-			ID:              createID(),
-			closedCicle:     make(chan bool),
-			FinishForServer: make(chan bool),
+			Upgrader: upgrader,
+			Connect:  true,
 		}
+		// Set Request
+		socket.HTTP.Request = r
 		// Create Conection
-		socket.WS, err = upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
+		socket.WS, err = upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			println("Error-37: " + socket.ID)
 			return
 		}
+		// Add Chanels
+		socket.FinishForServer = make(chan bool)
 		socket.prepare = make(chan bool)
-		socket.Conection()
-		upgrader.us[socket.ID] = socket
+		// Add UserData
+		socket.ID = randStringBytesMaskImprSrcUnsafe(14)
+		upgrader.users[socket.ID] = socket
+		// Add Conection Events
+		socket.CicleEvents()
 		// OnClosed conection
 		socket.WS.SetCloseHandler(func(a int, b string) error {
-			socket.Connect = false
+			// Finish emit
 			socket.FinishForServer <- true
+			// Conect is false
+			socket.Connect = false
+			// Send False on error not init handler
+			socket.prepare <- false
+			// Clear chanels
+			close(socket.prepare)
 			return nil
 		})
-		// onClosed Handler
+		// defer close function
 		defer func() {
-			close(socket.closedCicle)
-			close(socket.FinishForServer)
-			close(socket.prepare)
-			delete(upgrader.us, socket.ID)
+			fmt.Println("Defer Handler")
+			// Clear Connection
 			if socket.Connect {
-				socket.WCFG("clear-conection", nil)
+				socket.WCFG("close-configuration", nil)
+				socket.WS.Close()
 			}
-			socket.WS.Close()
+			// Clear vars
+			delete(upgrader.users, socket.ID)
+			close(socket.FinishForServer)
 		}()
 
 		// Run UserHandler
-		<-socket.prepare
-		handler(socket)
-		// Finish
-		socket.closedCicle <- true
+		if <-socket.prepare {
+			handler(socket)
+		}
 	}
-}
-
-func createID() string {
-	return fmt.Sprint(time.Now().Unix())
 }

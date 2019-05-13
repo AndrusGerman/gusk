@@ -1,22 +1,22 @@
 package gusk
 
 import (
-	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
 )
 
-// /*
-// 	Write Methods
-// */
+/*
+	Write Methods
+*/
 
 // WJSON write json and send
 func (ctx *Socket) WJSON(event string, d interface{}) error {
 	if ctx.Connect {
-		return ctx.WS.WriteJSON(MessageSend{Event: event, Data: d})
+		return ctx.WS.WriteJSON(Message{Event: event, Data: d})
 	}
-	return errors.New("No connect")
+	return errors.New("Error 1SM=Not conection")
 }
 
 // WCFG read message and parse
@@ -24,13 +24,19 @@ func (ctx *Socket) WCFG(mode string, data interface{}) error {
 	return ctx.WJSON("cfg", gin.H{"Mode": mode, "Data": data})
 }
 
-// /*
-// 	Read Methods
-// */
+// WLOG read message and parse
+func (ctx *Socket) WLOG(data interface{}) error {
+	return ctx.WJSON("cfg", gin.H{"Mode": "server-log", "Data": data})
+}
 
-// RJSON read message and parse
-func (ctx *Socket) RJSON(d interface{}) error {
-	return ctx.WS.ReadJSON(d)
+/*
+	Read Methods
+*/
+
+// ReadMessage read message and parse
+func (ctx *Socket) ReadMessage() (*Message, error) {
+	var mensaje = new(Message)
+	return mensaje, ctx.WS.ReadJSON(mensaje)
 }
 
 // Read read message and parse
@@ -39,29 +45,32 @@ func (ctx *Socket) Read() ([]byte, error) {
 	return b, err
 }
 
-// Conection init conection
-func (ctx *Socket) Conection() {
-	var terminar = false
-	if ctx.Event == nil {
-		ctx.Event = make(map[string]func([]byte))
-		ctx.Event["cfg"] = eventCFG(ctx)
-	}
-	go func() {
-		<-ctx.closedCicle
-		terminar = true
-	}()
+// CicleEvents init conection
+func (ctx *Socket) CicleEvents() {
+	// Set Configuration Route
+	ctx.Event = make(map[string]func(interface{}))
+	ctx.Event["cfg"] = eventGuskCFG(ctx)
+	// Conection Cilcle
 	go func() {
 		for {
-			if terminar {
-				return
-			}
-			resp := new(MessageGet)
-			dt, err := ctx.Read()
+			// Parse Response
+			resp, err := ctx.ReadMessage()
+			// Check error
 			if err != nil {
+				ctx.WLOG("Error 2SM=" + err.Error())
 				return
 			}
-			json.Unmarshal(dt, resp)
-			ctx.Event[resp.Event](dt)
+			// Check Event
+			if ctx.Event[resp.Event] == nil {
+				ctx.WLOG(fmt.Sprintf("Error 3SM=Event '%s' not found ", resp.Event))
+			} else {
+				// Send Message
+				ctx.Event[resp.Event](resp.Data)
+			}
+			// Check conection
+			if ctx.Connect == false {
+				return
+			}
 		}
 	}()
 }

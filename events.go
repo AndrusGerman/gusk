@@ -1,26 +1,24 @@
 package gusk
 
-import "encoding/json"
-
-func eventCFG(ctx *Socket) func(dt []byte) {
-	return func(dt []byte) {
-		resp := new(MessageCFG)
-		json.Unmarshal(dt, resp)
-		switch resp.Data.Mode {
-		case "get":
-			ctx.WCFG("set", ctx.ID)
+// Create cfg event
+func eventGuskCFG(ctx *Socket) func(interface{}) {
+	return func(dt interface{}) {
+		resp := dt.(map[string]interface{})
+		var mode = resp["Mode"].(string)
+		switch resp["Mode"] {
+		case "get-configuration-server":
+			ctx.WCFG("set-configuration", ctx.ID)
 			ctx.prepare <- true
-		case "server-closed":
+		case "close-server":
 			ctx.FinishForServer <- false
-		case "set":
-			delete(ctx.Upgrader.us, ctx.ID)
-			ctx.ID = resp.Data.Data
-			ctx.Upgrader.us[ctx.ID] = ctx
+		case "set-configuration-server":
+			delete(ctx.Upgrader.users, ctx.ID)
+			ctx.ID = resp["Data"].(string)
+			ctx.Upgrader.users[ctx.ID] = ctx
 			ctx.Reconection = true
 			ctx.prepare <- true
 		default:
-			ctx.WCFG("message", "El modo no es compatible")
+			ctx.WLOG("Error 1EGC='" + mode + "' not found")
 		}
-
 	}
 }
