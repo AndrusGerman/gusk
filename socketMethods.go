@@ -2,17 +2,14 @@ package gusk
 
 import (
 	"errors"
-	"fmt"
-
-	"github.com/gin-gonic/gin"
 )
 
 /*
 	Write Methods
 */
 
-// WJSON write json and send
-func (ctx *Socket) WJSON(event string, d interface{}) error {
+// Send write messaga and send
+func (ctx *Socket) Send(event string, d interface{}) error {
 	if ctx.Connect {
 		return ctx.WS.WriteJSON(Message{Event: event, Data: d})
 	}
@@ -21,12 +18,31 @@ func (ctx *Socket) WJSON(event string, d interface{}) error {
 
 // WCFG read message and parse
 func (ctx *Socket) WCFG(mode string, data interface{}) error {
-	return ctx.WJSON("cfg", gin.H{"Mode": mode, "Data": data})
+	return ctx.Send("cfg", H{"Mode": mode, "Data": data})
 }
 
-// WLOG read message and parse
+// WLOG read message and send
 func (ctx *Socket) WLOG(data interface{}) error {
-	return ctx.WJSON("cfg", gin.H{"Mode": "server-log", "Data": data})
+	return ctx.WCFG(ModeClient.Log, data)
+}
+
+// WLOGISTRUE read message and send if true
+func (ctx *Socket) WLOGISTRUE(boolVar bool, data interface{}) bool {
+	if boolVar {
+		ctx.WLOG(data)
+	}
+	return boolVar
+}
+
+// CloseSignal websocket connection
+func (ctx *Socket) CloseSignal() error {
+	ctx.SocketData.onClosedError = ctx.WCFG(ModeClient.CloseGusk, nil)
+	return ctx.SocketData.onClosedError
+}
+
+// ForceClose websocket disconnection
+func (ctx *Socket) ForceClose() {
+	ctx.Finish <- nil
 }
 
 /*
@@ -45,11 +61,16 @@ func (ctx *Socket) Read() ([]byte, error) {
 	return b, err
 }
 
+// AddRoom for user
+func (ctx *Socket) AddRoom(room string) {
+	ctx.SocketData.Rooms = append(ctx.SocketData.Rooms, room)
+}
+
 // CicleEvents init conection
 func (ctx *Socket) CicleEvents() {
+	ctx.SocketData.events = make(map[string]func(interface{}))
 	// Set Configuration Route
-	ctx.Event = make(map[string]func(interface{}))
-	ctx.Event["cfg"] = eventGuskCFG(ctx)
+	ctx.Event("cfg", eventGuskCFG(ctx))
 	// Conection Cilcle
 	go func() {
 		for {
@@ -61,11 +82,11 @@ func (ctx *Socket) CicleEvents() {
 				return
 			}
 			// Check Event
-			if ctx.Event[resp.Event] == nil {
-				ctx.WLOG(fmt.Sprintf("Error 3SM=Event '%s' not found ", resp.Event))
+			if ctx.SocketData.events[resp.Event] == nil {
+				ctx.WLOG("Error 3SM=Event '" + resp.Event + "' not found ")
 			} else {
 				// Send Message
-				ctx.Event[resp.Event](resp.Data)
+				ctx.SocketData.events[resp.Event](resp.Data)
 			}
 			// Check conection
 			if ctx.Connect == false {
@@ -73,4 +94,9 @@ func (ctx *Socket) CicleEvents() {
 			}
 		}
 	}()
+}
+
+// Event read message and parse
+func (ctx *Socket) Event(eventName string, handler func(interface{})) {
+	ctx.SocketData.events[eventName] = handler
 }
